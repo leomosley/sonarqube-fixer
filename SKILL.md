@@ -37,7 +37,7 @@ Work through each item below. Collect everything before proceeding — do not fe
 
 #### Token (`SONARQUBE_TOKEN`)
 
-Check the environment variable. If missing, show the **First-time Setup** guide (see below) and then ask the user to paste their token.
+Check the environment variable. If missing, read `setup.md` from this skill's directory and present the relevant sections to the user, then ask them to paste their token.
 
 #### Host (`SONARQUBE_HOST`)
 
@@ -50,11 +50,10 @@ Skip this step entirely if in self-hosted mode.
 If in SonarCloud mode, try to auto-detect from config files:
 
 ```bash
-# sonar-project.properties or .sonarcloud.properties
 grep "sonar.organization" sonar-project.properties .sonarcloud.properties 2>/dev/null | head -1
 ```
 
-If not found, check the `SONARQUBE_ORGANIZATION` environment variable. If still missing, ask the user:
+If not found, check the `SONARQUBE_ORGANIZATION` environment variable. If still missing, read `setup.md` and show the relevant section, then ask the user:
 
 > "What is your SonarCloud organization key? You can find it at sonarcloud.io → your avatar → **My Organizations** — it's the short slug in the URL (e.g. `my-company`, not the display name)."
 
@@ -70,7 +69,6 @@ Try each of these in order, stopping at the first match:
 6. `package.json` → `"sonar": { "projectKey": "..." }`
 
 ```bash
-# Quick scan across common locations
 grep -r "sonar.projectKey\|sonar\.projectKey" \
   sonar-project.properties .sonarcloud.properties package.json \
   build.gradle build.gradle.kts pom.xml 2>/dev/null | head -5
@@ -84,12 +82,14 @@ If not found anywhere, ask the user:
 
 #### Issues
 
+Self-hosted:
+
 ```bash
 curl -s -u "${SONARQUBE_TOKEN}:" \
   "${SONARQUBE_HOST}/api/issues/search?projectKeys=${PROJECT_KEY}&pullRequest=${PR_NUMBER}&resolved=false&ps=500"
 ```
 
-For SonarCloud, append `&organization=${ORGANIZATION}`:
+SonarCloud (append `&organization=`):
 
 ```bash
 curl -s -u "${SONARQUBE_TOKEN}:" \
@@ -129,6 +129,8 @@ Only act on hotspots with `status: TO_REVIEW`.
 
 ### Step 4 — Triage and fix
 
+Before starting, read `rules.md` from this skill's directory for guidance on how to fix common rule IDs.
+
 Group all issues by file so each file is read only once.
 
 For each file:
@@ -141,7 +143,7 @@ For each individual issue:
 - Apply the minimal correct fix.
 - If the issue is in a generated file (e.g. `*.generated.ts`, `dist/`, `build/`, `vendor/`), skip it and note it in the report.
 - For hotspots (`TO_REVIEW`): assess whether it is a genuine vulnerability. Fix real ones. Mark false positives in the report — do not edit the code for false positives.
-- If a fix requires an architectural change that is beyond a targeted edit (e.g. refactoring an entire service), note it as "Needs manual review" in the report and skip.
+- If a fix requires an architectural change beyond a targeted edit, note it as "Needs manual review" in the report and skip.
 
 ### Step 5 — Report
 
@@ -155,99 +157,9 @@ Produce a summary table after all fixes are applied:
 | `Dockerfile` | 3 | `docker:S6476` | Possible root user | False positive — `:nonroot` image |
 | `src/legacy.ts` | 88 | `typescript:S3776` | Cognitive complexity too high | Needs manual review — full function rewrite required |
 
----
-
-## First-time Setup Guide
-
-Show this when any required configuration is missing. Tailor it to what is actually missing — don't show the full guide if only the organization key is needed.
-
-### Generating a token
-
-**SonarCloud:**
-1. Go to [sonarcloud.io](https://sonarcloud.io) and sign in.
-2. Click your avatar (top right) → **My Account** → **Security** tab.
-3. Under "Generate Tokens", enter a name (e.g. `claude-code`) and click **Generate**.
-4. Copy the token — it will not be shown again.
-5. Use a **User Token** (not a Project Analysis Token). Project tokens cannot call the issues API on behalf of a user.
-
-**Self-hosted SonarQube:**
-1. Go to your SonarQube instance and sign in.
-2. Click your avatar → **My Account** → **Security**.
-3. Generate a **User Token** and copy it.
-
-### Storing configuration permanently
-
-**Option A — Shell profile** (available to all tools, not just Claude Code):
-
-Add to `~/.zshrc`, `~/.bashrc`, or `~/.zprofile` (use whichever your shell loads):
-
-```bash
-export SONARQUBE_TOKEN="your-token-here"
-export SONARQUBE_ORGANIZATION="your-org-key"   # SonarCloud only
-# export SONARQUBE_HOST="https://sonar.yourcompany.com"  # self-hosted only
-```
-
-Then reload: `source ~/.zshrc` (or open a new terminal).
-
-**Option B — Claude Code settings** (only available inside Claude Code sessions):
-
-Edit `~/.claude/settings.json` and add an `env` block:
-
-```json
-{
-  "env": {
-    "SONARQUBE_TOKEN": "your-token-here",
-    "SONARQUBE_ORGANIZATION": "your-org-key"
-  }
-}
-```
-
-If `~/.claude/settings.json` does not exist, create it with just the content above.
-
-**Recommendation:** Option A (shell profile) makes the token available everywhere. Option B is fine if you only use this skill inside Claude Code.
-
----
-
-## Common SonarQube Rule Fixes
-
-**Code Smells:**
-- `S1135` (TODO comment) — Remove or resolve the TODO
-- `S3776` (cognitive complexity) — Extract inner logic into named helper functions
-- `S107` (too many parameters) — Introduce an options/config object
-- `S1066` (collapsible if) — Merge nested `if` into a single condition with `&&`
-- `S1854` (useless assignment) — Remove the dead assignment or use the value
-- `S2814` (variable re-declaration) — Replace `var` with `const`/`let`
-- `S1192` (duplicated string literal) — Extract to a named constant
-
-**Bugs:**
-- `S2201` (return value ignored) — Use or explicitly discard the return value
-- `S905` (non-boolean in boolean context) — Add an explicit boolean comparison
-- `S3516` (function always returns same value) — Fix the logic or simplify the function
-
-**Security / Vulnerabilities:**
-- `S2068` (hardcoded credential) — Move value to an environment variable
-- `S5042` (zip slip) — Validate that extracted paths stay within the target directory
-- `S6096` (path traversal) — Sanitize and validate user-supplied file paths
-- `S4790` (weak hash) — Replace MD5/SHA-1 with SHA-256 or stronger
-
-**Shell scripts:**
-- `S2086` / `SC2086` — Quote variables: `"$var"` not `$var`
-- `S2155` / `SC2155` — Separate `declare`/`local` from assignment to capture exit codes
-- `SC2034` — Remove unused variables
-- `SC2046` — Quote command substitutions: `"$(cmd)"` not `$(cmd)`
-- Use `[[ ]]` instead of `[ ]` for bash conditionals
-
-**Java / Kotlin:**
-- `S2095` (resource leak) — Use try-with-resources
-- `S1612` (lambda can be method ref) — Replace `x -> foo(x)` with `Foo::foo`
-
-**Python:**
-- `S1481` (unused variable) — Remove or prefix with `_`
-- `S5754` (bare except) — Catch specific exception types
-
 ## Notes
 
 - Always read a file before editing it.
 - Apply fixes conservatively. Do not clean up surrounding code.
 - If pagination is needed (more than 500 issues), fetch all pages before starting fixes.
-- Issues in `node_modules/`, `dist/`, `build/`, `vendor/`, or `*.generated.*` files should be skipped — these are not part of the source code.
+- Issues in `node_modules/`, `dist/`, `build/`, `vendor/`, or `*.generated.*` files should be skipped.
