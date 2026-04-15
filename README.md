@@ -35,4 +35,4 @@ Store credentials in your shell profile or `~/.claude/settings.json` so you are 
 
 ## Authors
 
-Leo Mosley (leo@leomosley.com)
+[leomosley](https://github.com/leomosley)
